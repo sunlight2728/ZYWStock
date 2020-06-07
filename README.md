@@ -4,7 +4,7 @@
 [![License Apache](https://img.shields.io/hexpm/l/plug.svg?style=flat)]() &nbsp;
 # 说明
 - ZYWStock是iOS下K线图的绘制库。支持放大缩小，长按高亮, 横竖屏切换。流畅丝滑~~~
-- 如果刚好帮到了你，欢迎star fork 😄 O(∩_∩)O~~ 😄
+- 如果刚好帮到了你，欢迎star or fork 😄 O(∩_∩)O~~ 😄
 ## 
 - ![](https://github.com/zyw113/ZYWStock/blob/master/resourse/demo6.gif)
 - ![](https://github.com/zyw113/ZYWStock/blob/master/resourse/demo3.gif)
@@ -22,6 +22,8 @@
 - 新增分时图
 ### V0.3
 - 优化代码
+### V1.0
+- 整体代码修正
 ## 代理方法
 ```
 /**
@@ -56,7 +58,7 @@
 ### 基础属性方法
 ```
 /**
- 数据源数组 在调用绘制方法之前设置 。Demo中数据源个数是固定的，如需实现类似右拉加载更多效果(参考网易贵金属)，需要在每次添加数据的时候设置 然后调用绘制方法 (现在本地数据是重复的6组)
+ 数据源数组 在调用绘制方法之前设置
  */
 @property (nonatomic,strong) NSMutableArray<__kindof ZYWCandleModel*> *dataArray;
 
@@ -110,19 +112,42 @@
  */
 @property (nonatomic,assign) CGFloat contentOffset;
 
+/**
+ kvoEnable
+ */
 @property (nonatomic,assign) BOOL kvoEnable;
 
 /**
- 长按手势返回对应model的相对位置
-
- @param xPostion 手指在屏幕的位置
- @return 距离手指位置最近的model位置
+ 代理
  */
+@property (nonatomic,weak) id <ZYWCandleProtocol> delegate;
+
 - (CGPoint)getLongPressModelPostionWithXPostion:(CGFloat)xPostion;
 
+/**
+ 填充方法
+
+ */
 - (void)stockFill;
+
+/**
+ 刷新右拉加载调用
+ */
+- (void)reload;
+
+/**
+ 宽度计算
+ */
 - (void)calcuteCandleWidth;
+
+/**
+ 更新宽度
+ */
 - (void)updateWidth;
+
+/**
+ 绘制K线
+ */
 - (void)drawKLine;
 ```
 ## Contact

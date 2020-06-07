@@ -18,6 +18,8 @@
 #import "ZYWCrossPriceView.h"
 #import "ZYWCandleProtocol.h"
 #import "UIView+Extension.h"
+#import "ZYWCandlePostionModel.h"
+
 typedef enum
 {
     MACD = 1,
@@ -31,7 +33,7 @@ typedef enum
 #define BottomViewScale 0.28
 
 #define MinCount 10
-#define MaxCount 50
+#define MaxCount 200
 
 @interface CandleCrossScreenVC () <NSXMLParserDelegate,ZYWCandleProtocol,ZYWTecnnicalViewDelegate>
 
@@ -55,6 +57,11 @@ typedef enum
 @property (nonatomic,strong) UITapGestureRecognizer *tapGesture;
 @property (nonatomic,strong) UIView *verticalView;
 @property (nonatomic,strong) UIView *leavView;
+@property (nonatomic,strong) UIActivityIndicatorView *activityView;
+
+@property (nonatomic, assign) NSUInteger zoomRightIndex;
+@property (nonatomic, assign) CGFloat currentZoom;
+@property (nonatomic, assign) NSInteger displayCount;
 
 @end
 
@@ -82,12 +89,26 @@ typedef enum
     [self addBottomViews];
     [self initCrossLine];
     [self addPriceView];
+    [self addActivityView];
     self.view.backgroundColor = [UIColor whiteColor];
     self.dataSource = [NSMutableArray array];
     [self loadData];
 }
 
 #pragma mark 添加视图
+
+- (void)addActivityView
+{
+    _activityView = [UIActivityIndicatorView new];
+    [self.view addSubview:_activityView];
+    _activityView.hidesWhenStopped = YES;
+    _activityView.activityIndicatorViewStyle = UIActivityIndicatorViewStyleGray;
+    [_activityView mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(@(5));
+        make.centerY.equalTo(self.view);
+        make.size.mas_equalTo(CGSizeMake(15, 15));
+    }];
+}
 
 - (void)addQuotaView
 {
@@ -120,7 +141,7 @@ typedef enum
     _candleChartView = [ZYWCandleChartView new];
     [_scrollView addSubview:_candleChartView];
     _candleChartView.delegate = self;
-    
+    _currentZoom = -0.1f;
     [_candleChartView mas_makeConstraints:^(MASConstraintMaker *make) {
         make.left.equalTo(_scrollView);
         make.right.equalTo(_scrollView);
@@ -129,6 +150,7 @@ typedef enum
     }];
     _candleChartView.candleSpace = 2;
     _candleChartView.displayCount = 25;
+    _displayCount = 25;
     _candleChartView.lineWidth = 1*widthradio;
 }
 
@@ -229,7 +251,7 @@ typedef enum
     _longPressGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longGesture:)];
     [self.candleChartView addGestureRecognizer:_longPressGesture];
     
-    _pinchPressGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinchGesture:)];
+    _pinchPressGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinchesView:)];
     [self.scrollView addGestureRecognizer:_pinchPressGesture];
     
     _tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapGesture:)];
@@ -371,73 +393,64 @@ typedef enum
 
 #pragma mark 缩放手势
 
-- (void)pinchGesture:(UIPinchGestureRecognizer*)pinchPress
+- (void)pinchesView:(UIPinchGestureRecognizer *)pinchTap
 {
-    if (pinchPress.numberOfTouches < 2)
+    if (pinchTap.state == UIGestureRecognizerStateEnded)
     {
-        _candleChartView.kvoEnable = YES;
-        _scrollView.scrollEnabled = YES;
-        return;
+        _currentZoom = pinchTap.scale;
+        self.scrollView.scrollEnabled = YES;
     }
     
-    switch (pinchPress.state) {
-        case UIGestureRecognizerStateBegan:
-        {
-            _scrollView.scrollEnabled = NO;
-            _candleChartView.kvoEnable = NO;
-        }break;
-        case UIGestureRecognizerStateEnded:
-        {
-            _scrollView.scrollEnabled = YES;
-            _candleChartView.kvoEnable = YES;
-        }break;
-        default:
-            break;
+    else if (pinchTap.state == UIGestureRecognizerStateBegan && _currentZoom != 0.0f)
+    {
+        self.scrollView.scrollEnabled = NO;
+        pinchTap.scale = _currentZoom;
+        
+        ZYWCandlePostionModel *model = self.candleChartView.currentPostionArray.lastObject;
+        _zoomRightIndex = model.localIndex + 1;
     }
     
-    CGFloat scale = pinchPress.scale;
-    CGFloat originScale= 1.0;
-    CGFloat minScale = 0.03;
-    NSInteger displayCount = self.candleChartView.displayCount;
-    CGFloat diffScale = scale - originScale;
-    
-    if (fabs(diffScale) > minScale)
+    else if (pinchTap.state == UIGestureRecognizerStateChanged)
     {
-        CGPoint point1 = [pinchPress locationOfTouch:0 inView:self.scrollView];
-        CGPoint point2 = [pinchPress locationOfTouch:1 inView:self.scrollView];
-        CGFloat pinCenterX = (point1.x + point2.x) / 2;
-        CGFloat scrollViewPinCenterX =  pinCenterX;
-        NSInteger pinCenterLeftCount = scrollViewPinCenterX / (_candleChartView.candleWidth + _candleChartView.candleSpace);
-        pinCenterLeftCount = _candleChartView.currentStartIndex;
-        CGFloat newDisplayCount = diffScale > 0 ? (displayCount-1) : (1 + displayCount);
-        
-        if (newDisplayCount+pinCenterLeftCount > _candleChartView.dataArray.count)
+        CGFloat tmpZoom = 0.f;
+        if (isnan(_currentZoom))
         {
-            newDisplayCount = _candleChartView.dataArray.count - pinCenterLeftCount;
+            return;
+        }
+        tmpZoom = (pinchTap.scale)/ _currentZoom;
+        _currentZoom = pinchTap.scale;
+        NSInteger showNum = round(_displayCount / tmpZoom);
+        
+        if (showNum == _displayCount)
+        {
+            return;
         }
         
-        if (newDisplayCount <MinCount && scale >=1)
-        {
-            newDisplayCount = MinCount;
-        }
+        if (showNum >= _displayCount && _displayCount == MaxCount) return;
+        if (showNum <= _displayCount && _displayCount == MinCount) return;
         
-        if (newDisplayCount >MaxCount && scale < 1)
-        {
-            newDisplayCount = MaxCount;
-        }
+        _displayCount = showNum;
+        _displayCount = _displayCount < MinCount ? MinCount : _displayCount;
+        _displayCount = _displayCount > MaxCount ? MaxCount : _displayCount;
         
-        _candleChartView.displayCount = (NSInteger)newDisplayCount;
+        _candleChartView.displayCount = _displayCount;
         [_candleChartView calcuteCandleWidth];
-        [_candleChartView updateWidth];
-        
-        CGFloat newPinCenterX = pinCenterLeftCount * _candleChartView.candleWidth + (pinCenterLeftCount) * _candleChartView.candleSpace;
-        CGFloat newOffsetX = newPinCenterX;
-        _scrollView.contentOffset = CGPointMake(newOffsetX > 0 ? newOffsetX : 0, 0);
-        _candleChartView.contentOffset = _scrollView.contentOffset.x;
+        [_candleChartView updateWidthWithNoOffset];
         [_candleChartView drawKLine];
+        CGFloat offsetX = fabs(_zoomRightIndex* (self.candleChartView.candleSpace + self.candleChartView.candleWidth) - self.scrollView.width + self.candleChartView.leftMargin) ;
+        if (offsetX <= self.scrollView.frame.size.width)
+        {
+            offsetX = 0;
+        }
+        
+        if (offsetX > self.scrollView.contentSize.width - self.scrollView.frame.size.width)
+        {
+            offsetX = self.scrollView.contentSize.width - self.scrollView.frame.size.width;
+        }
+        
+        self.scrollView.contentOffset = CGPointMake(offsetX, 0);
     }
 }
-
 #pragma mark 竖屏手势
 
 - (void)tapGesture:(UITapGestureRecognizer*)tapGesture
@@ -496,24 +509,26 @@ typedef enum
     {
         [newMarray addObject:object];
     }
-    [self reloadData:newMarray];
+    [self reloadData:newMarray reload:NO];
 }
 
-- (void)reloadData:(NSMutableArray*)array
+- (void)reloadData:(NSMutableArray*)array reload:(BOOL)reload
 {
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
         _macdView.dataArray = computeMACDData(array).mutableCopy;
         _kdjLineView.dataArray = computeKDJData(array).mutableCopy;
         _wrLineView.dataArray = computeWRData(array,10).mutableCopy;
-        NSInteger count = self.candleChartView.displayCount;
-        NSInteger index = count / 5;
         
         for (NSInteger i = 0;i<array.count;i++)
         {
             ZYWCandleModel *model = array[i];
-            if (i % index == 0)
+            if (i % 20 == 0)
             {
                 model.isDrawDate = YES;
+            }
+            else
+            {
+                model.isDrawDate = NO;
             }
         }
         self.candleChartView.dataArray = array;
@@ -601,16 +616,30 @@ typedef enum
 
 - (void)displayMoreData
 {
-    NSLog(@"没有更多数据了");
-    /*---实现右滑加载加载更多注意点--*/
-    /*
-     1. 重新设置数据源
-     2. 调用 reloadData:(NSMutableArray*)array 方法
-     3. 设置scrollView的偏移量 self.scrollView.contentOffset = CGPointMake( self.candleChartView.previousOffsetX, 0);
-     */
+    NSLog(@"正在加载更多....");
+    [_activityView startAnimating];
+    __weak typeof(self) this = self;
+    dispatch_time_t delayTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0* NSEC_PER_SEC));
+    
+    dispatch_after(delayTime, dispatch_get_main_queue(), ^{
+        [this loadMoreData];
+    });
+}
+
+- (void)loadMoreData
+{
+    NSMutableArray *tempArray = _candleChartView.dataArray.mutableCopy;
+    for (NSInteger i = 0; i < _candleChartView.dataArray.count; i++) {
+        ZYWCandleModel *model = _candleChartView.dataArray[i];
+        [tempArray addObject:model];
+    }
+    [self reloadData:tempArray reload:YES];
+    
+    [_activityView stopAnimating];
 }
 
 #pragma mark 屏幕相关
+
 - (BOOL)shouldAutorotate
 {
     return YES;
